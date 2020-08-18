@@ -33,6 +33,10 @@
 #include "aros_compat.h"
 #endif
 
+#ifdef PS3_PPU
+#include "ps3_compat.h"
+#endif
+
 #ifdef HAVE_ARPA_INET_H
 #include <arpa/inet.h>
 #endif
@@ -319,14 +323,14 @@ bool_t libnfs_zdr_array(ZDR *zdrs, char **arrp, uint32_t *size, uint32_t maxsize
 	int  i;
         uint32_t s;
 
+	if (!libnfs_zdr_u_int(zdrs, size)) {
+		return FALSE;
+	}
+
         if (*size > UINT32_MAX/elsize) {
                 return FALSE;
         }
         s = *size * elsize;
-
-	if (!libnfs_zdr_u_int(zdrs, size)) {
-		return FALSE;
-	}
 
 	if (zdrs->x_op == ZDR_DECODE) {
 		*arrp = zdr_malloc(zdrs, s);
@@ -595,7 +599,7 @@ struct AUTH *libnfs_authunix_create(const char *host, uint32_t uid, uint32_t gid
 
 struct AUTH *libnfs_authunix_create_default(void)
 {
-#ifdef WIN32
+#if defined(WIN32) || defined(PS3_PPU)
 	return libnfs_authunix_create("libnfs", 65534, 65534, 0, NULL);
 #else
 	return libnfs_authunix_create("libnfs", getuid(), getgid(), 0, NULL);

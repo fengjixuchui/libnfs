@@ -24,7 +24,7 @@
 #define _LIBNFS_H_
 
 #include <stdint.h>
-#if defined(__ANDROID__) || defined(AROS) \
+#if defined(__ANDROID__) || defined(AROS) || defined(__PPU__) \
  || ( defined(__APPLE__) && defined(__MACH__) )
 #include <sys/time.h>
 #else
@@ -1903,6 +1903,16 @@ EXTERN int mount_getexports_async(struct rpc_context *rpc, const char *server,
  * returned data must be freed by calling mount_free_export_list(exportnode);
  */
 EXTERN struct exportnode *mount_getexports(const char *server);
+
+/*
+ * Sync getexports_timeout(<server>, <timeout>)
+ * Function returns
+ *            NULL : something failed
+ *  exports export : a linked list of exported directories
+ *
+ * returned data must be freed by calling mount_free_export_list(exportnode);
+ */
+EXTERN struct exportnode *mount_getexports_timeout(const char *server, int timeout);
 
 EXTERN void mount_free_export_list(struct exportnode *exports);
 

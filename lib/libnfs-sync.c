@@ -26,6 +26,10 @@
 #include "aros_compat.h"
 #endif
 
+#ifdef PS3_PPU
+#include "ps3_compat.h"
+#endif
+
 #ifdef WIN32
 #include <win32/win32_compat.h>
 #endif
@@ -114,8 +118,26 @@ wait_for_reply(struct rpc_context *rpc, struct sync_cb_data *cb_data)
 	struct pollfd pfd;
 	int revents;
 	int ret;
+	uint64_t timeout;
 
 	assert(rpc->magic == RPC_CONTEXT_MAGIC);
+
+	if (rpc->timeout > 0) {
+		timeout = rpc_current_time() + rpc->timeout;
+#ifndef HAVE_CLOCK_GETTIME
+		/* If we do not have GETTIME we fallback to time() which
+		 * has 1s granularity for its timestamps.
+		 * We thus need to bump the timeout by 1000ms
+		 * so that we break if timeout is within 1.0 - 2.0 seconds.
+		 * Otherwise setting a 1s timeout would trigger within
+		 * 0.001 - 1.0s.
+		 */
+		timeout += 1000;
+#endif
+	}
+	else {
+		timeout = 0;
+	}
 
 	while (!cb_data->is_finished) {
 
@@ -140,6 +162,11 @@ wait_for_reply(struct rpc_context *rpc, struct sync_cb_data *cb_data)
 
 		if (rpc_get_fd(rpc) == -1) {
 			rpc_set_error(rpc, "Socket closed");
+			break;
+		}
+
+		if (timeout > 0 && rpc_current_time() > timeout) {
+			rpc_set_error(rpc, "Timeout reached");
 			break;
 		}
 	}
@@ -1858,7 +1885,7 @@ mount_getexports_cb(struct rpc_context *mount_context, int status, void *data,
 }
 
 struct exportnode *
-mount_getexports(const char *server)
+mount_getexports_timeout(const char *server, int timeout)
 {
 	struct sync_cb_data cb_data;
 	struct rpc_context *rpc;
@@ -1868,6 +1895,7 @@ mount_getexports(const char *server)
 	cb_data.return_data = NULL;
 
 	rpc = rpc_init_context();
+	rpc_set_timeout(rpc, timeout);
 	if (mount_getexports_async(rpc, server, mount_getexports_cb,
                                    &cb_data) != 0) {
 		rpc_destroy_context(rpc);
@@ -1878,6 +1906,12 @@ mount_getexports(const char *server)
 	rpc_destroy_context(rpc);
 
 	return cb_data.return_data;
+}
+
+struct exportnode *
+mount_getexports(const char *server)
+{
+	return mount_getexports_timeout(server, -1);
 }
 
 void
@@ -2137,9 +2171,11 @@ send_nfsd_probes(struct rpc_context *rpc, struct ifconf *ifc,
 		if (ifr.ifr_addr.sa_family != AF_INET) {
 			continue;
 		}
+#ifndef PS3_PPU
 		if (ioctl(rpc_get_fd(rpc), SIOCGIFFLAGS, &ifr) < 0) {
 			return -1;
 		}
+#endif
 		if (!(ifr.ifr_flags & IFF_UP)) {
 			continue;
 		}
@@ -2149,9 +2185,11 @@ send_nfsd_probes(struct rpc_context *rpc, struct ifconf *ifc,
 		if (!(ifr.ifr_flags & IFF_BROADCAST)) {
 			continue;
 		}
+#ifndef PS3_PPU
 		if (ioctl(rpc_get_fd(rpc), SIOCGIFBRDADDR, &ifr) < 0) {
 			continue;
 		}
+#endif
 		if (getnameinfo(&ifr.ifr_broadaddr, sizeof(struct sockaddr_in),
                                 &bcdd[0], sizeof(bcdd), NULL, 0,
                                 NI_NUMERICHOST) < 0) {
@@ -2203,11 +2241,13 @@ nfs_find_local_servers(void)
 		ifc.ifc_len = size;
 		ifc.ifc_buf = malloc(size);
 		memset(ifc.ifc_buf, 0, size);
+#ifndef PS3_PPU
 		if (ioctl(rpc_get_fd(rpc), SIOCGIFCONF, (caddr_t)&ifc) < 0) {
 			rpc_destroy_context(rpc);
 			free(ifc.ifc_buf);
 			return NULL;
 		}
+#endif
 	}
 
 	for (loop=0; loop<3; loop++) {
